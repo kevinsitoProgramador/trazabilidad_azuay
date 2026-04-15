@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control Trazabilidad - Azuay</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #084242; color: white; font-family: sans-serif; }
+        .card { background-color: #18C3C3; border: 1px solid #318686; border-radius: 12px; }
+        .btn-connect { background-color: #07E0E0; color: #084242; font-weight: bold; }
+    </style>
+</head>
+<body class="p-5">
+    <div class="max-w-md mx-auto">
+        <header class="mb-8 text-center">
+            <h1 class="text-2xl font-bold">ESTACIÓN AZUAY</h1>
+            <p class="text-gray-300 text-sm">Panel de Control Bluetooth</p>
+        </header>
+
+        <div class="flex gap-2 mb-6">
+            <button id="btnConnect" class="btn-connect flex-1 py-3 rounded-lg shadow-lg">CONECTAR</button>
+            <button id="btnDisconnect" class="bg-red-500 flex-1 py-3 rounded-lg hidden">DESCONECTAR</button>
+        </div>
+
+        <div id="status" class="text-center text-sm mb-4 text-gray-400">Estado: Desconectado</div>
+
+        <div id="alertBox" class="hidden bg-red-600 p-4 rounded-lg mb-6 animate-pulse border-2 border-white">
+            <h2 class="font-bold">⚠️ ALERTA SANITARIA</h2>
+            <p id="alertMsg" class="text-sm"></p>
+        </div>
+
+        <h2 class="text-lg font-semibold mb-3">Historial Reciente</h2>
+        <div id="listaHistorial" class="space-y-3">
+            <p class="text-gray-500 italic">No hay datos recibidos...</p>
+        </div>
+    </div>
+
+    <script>
+        const SERVICE_UUID = "19b10000-e8f2-537e-4f6c-d104768a1214";
+        const CHAR_HISTORIAL_UUID = "19b10001-e8f2-537e-4f6c-d104768a1214";
+        const CHAR_ALERTA_UUID = "19b10002-e8f2-537e-4f6c-d104768a1214";
+
+        let device, server;
+
+        document.getElementById('btnConnect').addEventListener('click', async () => {
+            try {
+                console.log("Buscando dispositivo...");
+                device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'Estacion_Azuay' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                document.getElementById('status').innerText = "Estado: Conectando...";
+                server = await device.gatt.connect();
+                const service = await server.getPrimaryService(SERVICE_UUID);
+
+                // Configurar Historial
+                const charHistorial = await service.getCharacteristic(CHAR_HISTORIAL_UUID);
+                charHistorial.startNotifications();
+                charHistorial.addEventListener('characteristicvaluechanged', updateHistorial);
+
+                // Configurar Alertas
+                const charAlerta = await service.getCharacteristic(CHAR_ALERTA_UUID);
+                charAlerta.startNotifications();
+                charAlerta.addEventListener('characteristicvaluechanged', showAlert);
+
+                document.getElementById('status').innerText = "Estado: Conectado ✅";
+                document.getElementById('btnConnect').classList.add('hidden');
+                document.getElementById('btnDisconnect').classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Error:", error);
+                alert("Error al conectar: " + error);
+            }
+        });
+
+        function updateHistorial(event) {
+            const value = new TextDecoder().decode(event.target.value);
+            const lineas = value.split('\n');
+            const lista = document.getElementById('listaHistorial');
+            lista.innerHTML = ""; // Limpiar
+
+            lineas.forEach(linea => {
+                if(linea.trim() !== ""){
+                    const item = document.createElement('div');
+                    item.className = "card p-4 shadow-md text-sm";
+                    item.innerText = linea;
+                    lista.appendChild(item);
+                }
+            });
+        }
+
+        function showAlert(event) {
+            const msg = new TextDecoder().decode(event.target.value);
+            document.getElementById('alertBox').classList.remove('hidden');
+            document.getElementById('alertMsg').innerText = msg;
+            
+            // Vibración si el celular lo permite
+            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        }
+
+        document.getElementById('btnDisconnect').addEventListener('click', () => {
+            if (device && device.gatt.connected) device.gatt.disconnect();
+            location.reload();
+        });
+    </script>
+</body>
+</html> 
